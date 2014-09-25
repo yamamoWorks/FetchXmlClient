@@ -2,7 +2,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-[assembly: AssemblyTitle("XrmLib.Data.FetchXrmClient")]
+[assembly: AssemblyTitle("XrmLib.Data.FetchXmlClient")]
 [assembly: AssemblyDescription("https://FetchXmlClient.codeplex.com/")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]

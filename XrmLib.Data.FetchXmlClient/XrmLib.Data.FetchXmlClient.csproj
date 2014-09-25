@@ -7,8 +7,8 @@
     <ProjectGuid>{76978852-D19C-44D6-B9F9-50247F84402D}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>XrmLib.Data.FetchXrmClient</RootNamespace>
-    <AssemblyName>XrmLib.Data.FetchXrmClient</AssemblyName>
+    <RootNamespace>XrmLib.Data.FetchXmlClient</RootNamespace>
+    <AssemblyName>XrmLib.Data.FetchXmlClient</AssemblyName>
     <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
