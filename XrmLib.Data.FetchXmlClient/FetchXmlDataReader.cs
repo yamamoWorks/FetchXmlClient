@@ -20,9 +20,12 @@ namespace XrmLib.Data.FetchXmlClient
         private EntityCollection entityCollection;
         private FetchXmlConnection connection;
         private string[] attribteNames;
+        private bool useFormattedValue;
 
-        internal FetchXmlDataReader(FetchXmlConnection connection, string xml)
+        internal FetchXmlDataReader(FetchXmlConnection connection, string xml, bool useFormattedValue)
         {
+            this.useFormattedValue = useFormattedValue;
+
             this.fetchXml = XElement.Parse(xml);
             this.pageNumber = 1;
             this.pagingCookie = null;
@@ -157,7 +160,7 @@ namespace XrmLib.Data.FetchXmlClient
         {
             if (this.enumerator.Current.Attributes.ContainsKey(this.attribteNames[i]))
             {
-                return this.enumerator.Current.Attributes[this.attribteNames[i]];
+                return this.GetValue(this.attribteNames[i]);
             }
             return null;
         }
@@ -167,7 +170,7 @@ namespace XrmLib.Data.FetchXmlClient
             var n = Math.Min(values.Length, this.attribteNames.Length);
             for (int i = 0; i < n; i++)
             {
-                values[i] = this.enumerator.Current.Attributes[this.attribteNames[i]];
+                values[i] = this.GetValue(i);
             }
             return n;
         }
@@ -184,12 +187,22 @@ namespace XrmLib.Data.FetchXmlClient
 
         public override object this[int i]
         {
-            get { return this.enumerator.Current.Attributes[this.attribteNames[i]]; }
+            get { return this.GetValue(i); }
         }
 
         #endregion
 
         #region IDataReader
+
+        public override DataTable GetSchemaTable()
+        {
+            throw new NotSupportedException();
+        }
+
+        public override int RecordsAffected
+        {
+            get { return -1; }
+        }
 
         public override int Depth
         {
@@ -231,35 +244,30 @@ namespace XrmLib.Data.FetchXmlClient
             return this.enumerator;
         }
 
-        #region IDisposable
-
-        private bool disposed;
-
-        protected override void Dispose(bool disposing)
+        private object GetValue(string key)
         {
-            if (!this.disposed)
+            var value = this.enumerator.Current.Attributes[key];
+
+            if (this.useFormattedValue)
             {
-                if (disposing)
+                if (this.enumerator.Current.FormattedValues.ContainsKey(key))
                 {
-                    if (this.enumerator != null)
-                    {
-                        this.enumerator.Dispose();
-                    }
+                    return this.enumerator.Current.FormattedValues[key];
                 }
-                this.entityCollection = null;
-                this.enumerator = null;
+
+                if (value is EntityReference)
+                {
+                    return ((EntityReference)value).Name;
+                }
+
+                if (value is AliasedValue)
+                {
+                    return ((AliasedValue)value).Value;
+                }
             }
-            this.disposed = true;
 
-            base.Dispose(disposing);
+            return value;
         }
-
-        ~FetchXmlDataReader()
-        {
-            this.Dispose(false);
-        }
-
-        #endregion
 
         private void Fetch()
         {
@@ -287,16 +295,32 @@ namespace XrmLib.Data.FetchXmlClient
             this.pagingCookie = this.entityCollection.PagingCookie;
         }
 
-        #region NotSupported
+        #region IDisposable
 
-        public override DataTable GetSchemaTable()
+        private bool disposed;
+
+        protected override void Dispose(bool disposing)
         {
-            throw new NotSupportedException();
+            if (!this.disposed)
+            {
+                if (disposing)
+                {
+                    if (this.enumerator != null)
+                    {
+                        this.enumerator.Dispose();
+                    }
+                }
+                this.entityCollection = null;
+                this.enumerator = null;
+            }
+            this.disposed = true;
+
+            base.Dispose(disposing);
         }
 
-        public override int RecordsAffected
+        ~FetchXmlDataReader()
         {
-            get { throw new NotSupportedException(); }
+            this.Dispose(false);
         }
 
         #endregion

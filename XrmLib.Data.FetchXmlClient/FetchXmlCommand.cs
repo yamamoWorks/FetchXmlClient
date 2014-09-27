@@ -10,7 +10,26 @@ namespace XrmLib.Data.FetchXmlClient
     public sealed class FetchXmlCommand : DbCommand
     {
         public FetchXmlCommand()
+            : this(null, null)
         {
+        }
+
+        public FetchXmlCommand(FetchXmlConnection connection)
+            : this(null, connection)
+        {
+        }
+
+        public FetchXmlCommand(string commandText, FetchXmlConnection connection)
+        {
+            this.CommandText = commandText;
+            this.Connection = connection;
+            this.UseFormattedValue = true;
+        }
+
+        public bool UseFormattedValue
+        {
+            get;
+            set;
         }
 
         public override string CommandText
@@ -32,12 +51,12 @@ namespace XrmLib.Data.FetchXmlClient
 
         public new FetchXmlDataReader ExecuteReader(CommandBehavior behavior)
         {
-            if (this.Connection.State == ConnectionState.Closed)
+            if (this.Connection.State != ConnectionState.Open)
             {
-                throw new InvalidOperationException(string.Format("ConnectionState is {0}.", this.Connection.State));
+                throw new InvalidOperationException("ExecuteReader requires an open and available Connection. The connection's current state is closed.");
             }
 
-            return new FetchXmlDataReader(this.Connection, this.CommandText);
+            return new FetchXmlDataReader(this.Connection, this.CommandText, this.UseFormattedValue);
         }
 
         protected override DbConnection DbConnection
