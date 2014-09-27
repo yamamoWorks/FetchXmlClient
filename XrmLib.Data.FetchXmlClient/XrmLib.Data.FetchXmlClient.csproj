@@ -53,6 +53,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="EnumerableExtentions.cs" />
+    <Compile Include="FetchXmlEnumerator.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="FetchXmlClientFactory.cs" />
     <Compile Include="FetchXmlCommand.cs">
@@ -62,6 +64,7 @@
       <SubType>Component</SubType>
     </Compile>
     <Compile Include="FetchXmlDataReader.cs" />
+    <Compile Include="TypeMappingService.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

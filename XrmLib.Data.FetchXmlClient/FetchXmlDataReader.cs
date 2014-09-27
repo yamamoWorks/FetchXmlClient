@@ -1,4 +1,7 @@
-﻿using Microsoft.Xrm.Sdk;
+﻿using Microsoft.Xrm.Client.Services;
+using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Messages;
+using Microsoft.Xrm.Sdk.Metadata;
 using Microsoft.Xrm.Sdk.Query;
 using System;
 using System.Collections;
@@ -7,39 +10,25 @@ using System.Data;
 using System.Data.Common;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using System.Xml.Linq;
 
 namespace XrmLib.Data.FetchXmlClient
 {
     public sealed class FetchXmlDataReader : DbDataReader
     {
-        private IEnumerator<Entity> enumerator;
-        private XElement fetchXml;
-        private int pageNumber;
-        private string pagingCookie;
-        private EntityCollection entityCollection;
+        private FetchXmlEnumerator enumerator;
         private FetchXmlConnection connection;
-        private string[] attribteNames;
+        private string[] attribtes;
+        private IDictionary<string, string> aliases;
+        private IDictionary<string, AttributeMetadata> metadatas;
         private bool useFormattedValue;
 
-        internal FetchXmlDataReader(FetchXmlConnection connection, string xml, bool useFormattedValue)
+        internal FetchXmlDataReader(FetchXmlConnection connection, string fetchXml, bool useFormattedValue)
         {
             this.useFormattedValue = useFormattedValue;
-
-            this.fetchXml = XElement.Parse(xml);
-            this.pageNumber = 1;
-            this.pagingCookie = null;
-            this.PageCount = 0;
-
-            this.enumerator = null;
             this.connection = connection;
-
-            this.attribteNames =
-                this.fetchXml.Elements("entity").Elements("attribute").Select(x => x.Attribute("name").Value).Concat(
-                this.fetchXml.Elements("entity").Elements("link-entity").SelectMany(x => x.Elements("attribute").Select(y => x.Attribute("alias").Value + "." + y.Attribute("name").Value))
-                ).ToArray();
-
-            this.Fetch();
+            this.Initialize(XElement.Parse(fetchXml));
         }
 
         public int PageCount { get; set; }
@@ -48,12 +37,12 @@ namespace XrmLib.Data.FetchXmlClient
 
         public override bool HasRows
         {
-            get { return this.entityCollection.TotalRecordCount > 0; }
+            get { return this.enumerator.HasRow; }
         }
 
         public override int FieldCount
         {
-            get { return this.attribteNames.Length; }
+            get { return this.attribtes.Length; }
         }
 
         public override bool GetBoolean(int i)
@@ -105,15 +94,8 @@ namespace XrmLib.Data.FetchXmlClient
 
         public override Type GetFieldType(int i)
         {
-            if (this.entityCollection.Entities.Count() > 0)
-            {
-                var value = this.entityCollection.Entities.First().Attributes[this.attribteNames[i]];
-                if (value != null)
-                {
-                    return value.GetType();
-                }
-            }
-            return null;
+            var typeCode = this.metadatas[this.GetName(i)].AttributeType.Value;
+            return TypeMappingService.GetType(typeCode, this.useFormattedValue);
         }
 
         public override float GetFloat(int i)
@@ -143,12 +125,12 @@ namespace XrmLib.Data.FetchXmlClient
 
         public override string GetName(int i)
         {
-            return this.attribteNames[i];
+            return this.attribtes[i];
         }
 
         public override int GetOrdinal(string name)
         {
-            return Array.IndexOf<string>(this.attribteNames, name);
+            return Array.IndexOf<string>(this.attribtes, name);
         }
 
         public override string GetString(int i)
@@ -158,16 +140,16 @@ namespace XrmLib.Data.FetchXmlClient
 
         public override object GetValue(int i)
         {
-            if (this.enumerator.Current.Attributes.ContainsKey(this.attribteNames[i]))
+            if (this.enumerator.Current.Attributes.ContainsKey(this.attribtes[i]))
             {
-                return this.GetValue(this.attribteNames[i]);
+                return this.GetValue(this.attribtes[i]);
             }
             return null;
         }
 
         public override int GetValues(object[] values)
         {
-            var n = Math.Min(values.Length, this.attribteNames.Length);
+            var n = Math.Min(values.Length, this.attribtes.Length);
             for (int i = 0; i < n; i++)
             {
                 values[i] = this.GetValue(i);
@@ -177,7 +159,7 @@ namespace XrmLib.Data.FetchXmlClient
 
         public override bool IsDBNull(int i)
         {
-            return this.enumerator.Current.Attributes[this.attribteNames[i]] == null;
+            return this.enumerator.Current.Attributes[this.attribtes[i]] == null;
         }
 
         public override object this[string name]
@@ -196,7 +178,25 @@ namespace XrmLib.Data.FetchXmlClient
 
         public override DataTable GetSchemaTable()
         {
-            throw new NotSupportedException();
+            var table = new DataTable();
+            var columnNameColumn = table.Columns.Add(SchemaTableColumn.ColumnName, typeof(string));
+            var columnOrdinalColumn = table.Columns.Add(SchemaTableColumn.ColumnOrdinal, typeof(int));
+            var columnSizeColumn = table.Columns.Add(SchemaTableColumn.ColumnSize, typeof(int));
+            var dataTypeColumn = table.Columns.Add(SchemaTableColumn.DataType, typeof(Type));
+            var isKeyColumn = table.Columns.Add(SchemaTableColumn.IsKey, typeof(bool));
+
+            for (int i = 0; i < this.attribtes.Length; i++)
+            {
+                var row = table.NewRow();
+                row[columnNameColumn] = this.attribtes[i];
+                row[columnOrdinalColumn] = i;
+                row[columnSizeColumn] = -1;
+                row[dataTypeColumn] = this.GetFieldType(i);
+                row[isKeyColumn] = this.metadatas[this.attribtes[i]].IsPrimaryId;
+                table.Rows.Add(row);
+            }
+
+            return table;
         }
 
         public override int RecordsAffected
@@ -216,15 +216,7 @@ namespace XrmLib.Data.FetchXmlClient
 
         public override bool Read()
         {
-            var hasData = this.enumerator.MoveNext();
-
-            if (!hasData && this.entityCollection.MoreRecords)
-            {
-                this.Fetch();
-                return this.Read();
-            }
-
-            return hasData;
+            return this.enumerator.MoveNext();
         }
 
         public override void Close()
@@ -244,9 +236,44 @@ namespace XrmLib.Data.FetchXmlClient
             return this.enumerator;
         }
 
+        private void Initialize(XElement fetchXml)
+        {
+            var entity = fetchXml.Element("entity");
+            var linkEntities = fetchXml.Elements("entity").Elements("link-entity");
+
+            var entityName = entity.Attribute("name").Value;
+            var linkEntitiesNames = linkEntities.Select(x => x.Attribute("name").Value);
+
+            this.attribtes =
+                entity.Elements("attribute").Attributes("name").Select(x => x.Value).Concat(
+                linkEntities.Elements("attribute").Attributes("name").Select(x => x.Parent.Parent.Attribute("alias").Value + "." + x.Value)
+                ).ToArray();
+
+            this.aliases = linkEntities.ToDictionary(x => x.Attribute("alias").Value, x => x.Attribute("name").Value);
+
+            var task = this.GetEntityMetadataAsync(linkEntitiesNames.Concat(entityName).ToArray());
+
+            this.enumerator = new FetchXmlEnumerator(new OrganizationService(connection.CrmConnection), fetchXml);
+
+            var metas = task.Result;
+
+            this.metadatas = this.attribtes.ToDictionary(key => key, key =>
+            {
+                var keyArray = key.Split('.');
+                var en = keyArray.Length > 1 ? this.aliases[keyArray.First()] : entityName;
+                var an = keyArray.Last();
+                return metas[en].Attributes.Single(a => a.LogicalName == an);
+            });
+        }
+
         private object GetValue(string key)
         {
             var value = this.enumerator.Current.Attributes[key];
+
+            if (value is AliasedValue)
+            {
+                value = ((AliasedValue)value).Value;
+            }
 
             if (this.useFormattedValue)
             {
@@ -259,40 +286,28 @@ namespace XrmLib.Data.FetchXmlClient
                 {
                     return ((EntityReference)value).Name;
                 }
-
-                if (value is AliasedValue)
-                {
-                    return ((AliasedValue)value).Value;
-                }
             }
 
             return value;
         }
 
-        private void Fetch()
+        private Task<IDictionary<string, EntityMetadata>> GetEntityMetadataAsync(string[] entityNames)
         {
-            if (this.pagingCookie != null)
+            return Task.Factory.StartNew<IDictionary<string, EntityMetadata>>(() =>
             {
-                this.fetchXml.SetAttributeValue("paging-cookie", this.pagingCookie);
-                this.fetchXml.SetAttributeValue("page", this.pageNumber);
-            }
-
-            if (this.PageCount > 0)
-            {
-                this.fetchXml.SetAttributeValue("count", this.PageCount);
-            }
-
-            var fexp = new FetchExpression(this.fetchXml.ToString(SaveOptions.DisableFormatting));
-            this.entityCollection = this.connection.OrganizationService.RetrieveMultiple(fexp);
-            this.enumerator = this.entityCollection.Entities.GetEnumerator();
-
-            if (this.entityCollection.Entities.Count() > 0)
-            {
-                this.attribteNames = this.entityCollection.Entities.First().Attributes.Keys.ToArray();
-            }
-
-            this.pageNumber++;
-            this.pagingCookie = this.entityCollection.PagingCookie;
+                return entityNames.AsParallel().Select(name =>
+                {
+                    using (var service = new OrganizationService(this.connection.CrmConnection))
+                    {
+                        return service.RetrieveEntity(new RetrieveEntityRequest
+                        {
+                            LogicalName = name,
+                            EntityFilters = EntityFilters.Attributes
+                        }).EntityMetadata;
+                    }
+                })
+                .ToDictionary(m => m.LogicalName);
+            });
         }
 
         #region IDisposable
@@ -310,7 +325,6 @@ namespace XrmLib.Data.FetchXmlClient
                         this.enumerator.Dispose();
                     }
                 }
-                this.entityCollection = null;
                 this.enumerator = null;
             }
             this.disposed = true;

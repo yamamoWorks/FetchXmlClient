@@ -51,11 +51,7 @@ namespace XrmLib.Data.FetchXmlClient
 
         public new FetchXmlDataReader ExecuteReader(CommandBehavior behavior)
         {
-            if (this.Connection.State != ConnectionState.Open)
-            {
-                throw new InvalidOperationException("ExecuteReader requires an open and available Connection. The connection's current state is closed.");
-            }
-
+            this.Connection.SetConnectionState(ConnectionState.Open);
             return new FetchXmlDataReader(this.Connection, this.CommandText, this.UseFormattedValue);
         }
 
@@ -95,7 +91,7 @@ namespace XrmLib.Data.FetchXmlClient
 
         public override CommandType CommandType
         {
-            get { throw new NotSupportedException(); }
+            get { return CommandType.Text; }
             set { throw new NotSupportedException(); }
         }
 

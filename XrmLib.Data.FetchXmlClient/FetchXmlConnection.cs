@@ -13,32 +13,21 @@ namespace XrmLib.Data.FetchXmlClient
     public sealed class FetchXmlConnection : DbConnection
     {
         private string connectionString;
-        private CrmConnection crmConnection;
+        private ConnectionState state;
 
         public FetchXmlConnection()
         {
-            this.crmConnection = new CrmConnection();
+            CrmConnection = new CrmConnection();
         }
 
         public FetchXmlConnection(string connectionStringName)
         {
-            this.crmConnection = new CrmConnection(connectionStringName);
+            CrmConnection = new CrmConnection(connectionStringName);
         }
 
         public FetchXmlConnection(ConnectionStringSettings connectionString)
         {
-            this.crmConnection = new CrmConnection(connectionString);
-        }
-
-        internal OrganizationService OrganizationService
-        {
-            get;
-            set;
-        }
-
-        protected override DbProviderFactory DbProviderFactory
-        {
-            get { return FetchXmlClientFactory.Instance; }
+            CrmConnection = new CrmConnection(connectionString);
         }
 
         public override string ConnectionString
@@ -47,37 +36,44 @@ namespace XrmLib.Data.FetchXmlClient
             set
             {
                 this.connectionString = value;
-                this.crmConnection = CrmConnection.Parse(value);
+                CrmConnection = CrmConnection.Parse(value);
             }
         }
 
         public override int ConnectionTimeout
         {
-            get { return this.crmConnection.Timeout.HasValue ? (int)this.crmConnection.Timeout.Value.TotalSeconds : 0; }
+            get { return CrmConnection.Timeout.HasValue ? (int)CrmConnection.Timeout.Value.TotalSeconds : 0; }
         }
 
         public override string DataSource
         {
-            get { return this.crmConnection.HomeRealmUri.AbsolutePath; }
+            get { return CrmConnection.HomeRealmUri.AbsolutePath; }
         }
 
         public override ConnectionState State
         {
-            get { return this.OrganizationService == null ? ConnectionState.Closed : ConnectionState.Open; }
+            get { return this.state; }
+        }
+
+        internal CrmConnection CrmConnection
+        {
+            get;
+            private set;
+        }
+
+        protected override DbProviderFactory DbProviderFactory
+        {
+            get { return FetchXmlClientFactory.Instance; }
         }
 
         public override void Open()
         {
-            this.OrganizationService = new OrganizationService(this.crmConnection);
+            this.state = ConnectionState.Open;
         }
 
         public override void Close()
         {
-            if (this.OrganizationService != null)
-            {
-                this.OrganizationService.Dispose();
-                this.OrganizationService = null;
-            }
+            this.state = ConnectionState.Closed;
         }
 
         public new FetchXmlCommand CreateCommand()
@@ -90,6 +86,11 @@ namespace XrmLib.Data.FetchXmlClient
             return this.CreateCommand();
         }
 
+        internal void SetConnectionState(ConnectionState state)
+        {
+            this.state = state;
+        }
+
         #region IDisposable
 
         private bool disposed;
@@ -100,12 +101,7 @@ namespace XrmLib.Data.FetchXmlClient
             {
                 if (disposing)
                 {
-                    if (this.OrganizationService != null)
-                    {
-                        this.OrganizationService.Dispose();
-                    }
-                    this.OrganizationService = null;
-                    this.crmConnection = null;
+                    this.CrmConnection = null;
                 }
             }
             this.disposed = true;
