@@ -94,8 +94,14 @@ namespace XrmLib.Data.FetchXmlClient
 
         public override Type GetFieldType(int i)
         {
-            var typeCode = this.metadatas[this.GetName(i)].AttributeType.Value;
-            return TypeMappingService.GetType(typeCode, this.useFormattedValue);
+            var meta = this.metadatas[this.GetName(i)];
+            if (meta.AttributeTypeName != null)
+            {
+                // 2013
+                return TypeMappingService.GetType(meta.AttributeTypeName, this.useFormattedValue);
+            }
+            // 2011
+            return TypeMappingService.GetType(meta.AttributeType.Value, this.useFormattedValue);
         }
 
         public override float GetFloat(int i)
