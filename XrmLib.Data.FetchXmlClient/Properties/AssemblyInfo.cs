@@ -3,10 +3,10 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("XrmLib.Data.FetchXmlClient")]
-[assembly: AssemblyDescription("https://FetchXmlClient.codeplex.com/")]
+[assembly: AssemblyDescription(".NET Framework Data Provider for Dynamics CRM FetchXml")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct(".NET Framework Data Provider for Dynamics CRM FetchXml")]
+[assembly: AssemblyCompany("yamamo")]
+[assembly: AssemblyProduct("XrmLib.Data.FetchXmlClient")]
 [assembly: AssemblyCopyright("Copyright © yamamo 2014")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
