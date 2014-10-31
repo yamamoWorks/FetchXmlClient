@@ -23,6 +23,7 @@ namespace XrmLib.Data.FetchXmlClient
             this.service = service;
             this.fetchXml = fetchXml;
             this.maxPageCount = maxPageCount;
+            this.page = 1;
             this.Fetch();
         }
 
