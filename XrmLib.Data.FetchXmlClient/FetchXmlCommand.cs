@@ -24,9 +24,23 @@ namespace XrmLib.Data.FetchXmlClient
             this.CommandText = commandText;
             this.Connection = connection;
             this.UseFormattedValue = true;
+            this.UseDisplayName = false;
+            this.HidePrimaryId = false;
         }
 
         public bool UseFormattedValue
+        {
+            get;
+            set;
+        }
+
+        public bool UseDisplayName
+        {
+            get;
+            set;
+        }
+
+        public bool HidePrimaryId
         {
             get;
             set;
@@ -52,7 +66,7 @@ namespace XrmLib.Data.FetchXmlClient
         public new FetchXmlDataReader ExecuteReader(CommandBehavior behavior)
         {
             this.Connection.SetConnectionState(ConnectionState.Open);
-            return new FetchXmlDataReader(this.Connection, this.CommandText, this.UseFormattedValue);
+            return new FetchXmlDataReader(this.Connection, this.CommandText, this.UseFormattedValue, this.UseDisplayName, this.HidePrimaryId);
         }
 
         protected override DbConnection DbConnection

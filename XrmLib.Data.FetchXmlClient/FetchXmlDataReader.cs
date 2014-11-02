@@ -19,13 +19,17 @@ namespace XrmLib.Data.FetchXmlClient
     {
         private FetchXmlEnumerator enumerator;
         private FetchXmlConnection connection;
-        private string[] attribtes;
-        private IDictionary<string, string> aliases;
-        private IDictionary<string, AttributeMetadata> metadatas;
+        private string[] attribtues;
+        private IDictionary<string, AttributeMetadata> attributesMetadata;
+        private string[] displaryNames;
         private bool useFormattedValue;
+        private bool useDisplayName;
+        private bool hidePrimaryId;
 
-        internal FetchXmlDataReader(FetchXmlConnection connection, string fetchXml, bool useFormattedValue)
+        internal FetchXmlDataReader(FetchXmlConnection connection, string fetchXml, bool useFormattedValue, bool useDisplayName, bool hidePrimaryId)
         {
+            this.hidePrimaryId = hidePrimaryId;
+            this.useDisplayName = useDisplayName;
             this.useFormattedValue = useFormattedValue;
             this.connection = connection;
             this.Initialize(XElement.Parse(fetchXml));
@@ -42,7 +46,7 @@ namespace XrmLib.Data.FetchXmlClient
 
         public override int FieldCount
         {
-            get { return this.attribtes.Length; }
+            get { return this.attribtues.Length; }
         }
 
         public override bool GetBoolean(int i)
@@ -94,7 +98,7 @@ namespace XrmLib.Data.FetchXmlClient
 
         public override Type GetFieldType(int i)
         {
-            var meta = this.metadatas[this.GetName(i)];
+            var meta = this.attributesMetadata[this.attribtues[i]];
             if (meta.AttributeTypeName != null)
             {
                 // 2013
@@ -131,12 +135,12 @@ namespace XrmLib.Data.FetchXmlClient
 
         public override string GetName(int i)
         {
-            return this.attribtes[i];
+            return this.useDisplayName ? this.displaryNames[i] : this.attribtues[i];
         }
 
         public override int GetOrdinal(string name)
         {
-            return Array.IndexOf<string>(this.attribtes, name);
+            return this.useDisplayName ? Array.IndexOf(this.displaryNames, name) : Array.IndexOf(this.attribtues, name);
         }
 
         public override string GetString(int i)
@@ -146,16 +150,16 @@ namespace XrmLib.Data.FetchXmlClient
 
         public override object GetValue(int i)
         {
-            if (this.enumerator.Current.Attributes.ContainsKey(this.attribtes[i]))
+            if (this.enumerator.Current.Attributes.ContainsKey(this.attribtues[i]))
             {
-                return this.GetValue(this.attribtes[i]);
+                return this.GetValue(this.attribtues[i]);
             }
             return null;
         }
 
         public override int GetValues(object[] values)
         {
-            var n = Math.Min(values.Length, this.attribtes.Length);
+            var n = Math.Min(values.Length, this.attribtues.Length);
             for (int i = 0; i < n; i++)
             {
                 values[i] = this.GetValue(i);
@@ -165,7 +169,7 @@ namespace XrmLib.Data.FetchXmlClient
 
         public override bool IsDBNull(int i)
         {
-            return this.enumerator.Current.Attributes[this.attribtes[i]] == null;
+            return this.enumerator.Current.Attributes[this.attribtues[i]] == null;
         }
 
         public override object this[string name]
@@ -191,14 +195,14 @@ namespace XrmLib.Data.FetchXmlClient
             var dataTypeColumn = table.Columns.Add(SchemaTableColumn.DataType, typeof(Type));
             var isKeyColumn = table.Columns.Add(SchemaTableColumn.IsKey, typeof(bool));
 
-            for (int i = 0; i < this.attribtes.Length; i++)
+            for (int i = 0; i < this.attribtues.Length; i++)
             {
                 var row = table.NewRow();
-                row[columnNameColumn] = this.attribtes[i];
+                row[columnNameColumn] = this.GetName(i);
                 row[columnOrdinalColumn] = i;
                 row[columnSizeColumn] = -1;
                 row[dataTypeColumn] = this.GetFieldType(i);
-                row[isKeyColumn] = this.metadatas[this.attribtes[i]].IsPrimaryId;
+                row[isKeyColumn] = this.attributesMetadata[this.attribtues[i]].IsPrimaryId;
                 table.Rows.Add(row);
             }
 
@@ -244,32 +248,54 @@ namespace XrmLib.Data.FetchXmlClient
 
         private void Initialize(XElement fetchXml)
         {
-            var entity = fetchXml.Element("entity");
-            var linkEntities = fetchXml.Elements("entity").Elements("link-entity");
+            var xMainEntity = fetchXml.Element("entity");
+            var xAllEntities = fetchXml.Elements("entity").Concat(fetchXml.Descendants("link-entity"));
 
-            var entityName = entity.Attribute("name").Value;
-            var linkEntitiesNames = linkEntities.Select(x => x.Attribute("name").Value);
-
-            this.attribtes =
-                entity.Elements("attribute").Attributes("name").Select(x => x.Value).Concat(
-                linkEntities.Elements("attribute").Attributes("name").Select(x => x.Parent.Parent.Attribute("alias").Value + "." + x.Value)
-                ).ToArray();
-
-            this.aliases = linkEntities.ToDictionary(x => x.Attribute("alias").Value, x => x.Attribute("name").Value);
-
-            var task = this.GetEntityMetadataAsync(linkEntitiesNames.Concat(entityName).ToArray());
+            var task = this.GetEntityMetadataAsync(xAllEntities.Select(x => x.Attribute("name").Value).ToArray());
 
             this.enumerator = new FetchXmlEnumerator(new OrganizationService(connection.CrmConnection), fetchXml);
 
-            var metas = task.Result;
+            var mAllEntities = task.Result.ToDictionary(em => em.LogicalName);
 
-            this.metadatas = this.attribtes.ToDictionary(key => key, key =>
-            {
-                var keyArray = key.Split('.');
-                var en = keyArray.Length > 1 ? this.aliases[keyArray.First()] : entityName;
-                var an = keyArray.Last();
-                return metas[en].Attributes.Single(a => a.LogicalName == an);
-            });
+            var attrMetaList = xAllEntities
+                .SelectMany(xe =>
+                {
+                    var em = mAllEntities[xe.Attribute("name").Value];
+                    return xe.Elements("attribute").Attributes("name")
+                        .Select(xa =>
+                        {
+                            return new
+                            {
+                                Name = string.Join(".", xe.Attributes("alias").Select(a => a.Value).Concat(xa.Value)),
+                                Meta = em.Attributes.Single(am => am.LogicalName == xa.Value)
+                            };
+                        });
+                })
+                .Where(a => !(this.hidePrimaryId && a.Meta.IsPrimaryId.Value));
+
+            this.attribtues = attrMetaList.Select(a => a.Name).ToArray();
+            this.attributesMetadata = attrMetaList.ToDictionary(a => a.Name, a => a.Meta);
+
+            var aliases = xAllEntities.Except(xMainEntity)
+                .ToDictionary(x => x.Attribute("alias").Value, x => x.Attribute("to").Value);
+
+            var mainEntityMeta = mAllEntities[xMainEntity.Attribute("name").Value];
+
+            this.displaryNames = this.attribtues
+                .Select(a =>
+                {
+                    var am = this.attributesMetadata[a];
+                    if (am.EntityLogicalName == mainEntityMeta.LogicalName)
+                    {
+                        return am.DisplayName.UserLocalizedLabel.Label;
+                    }
+                    var to = aliases[a.Split('.').First()];
+                    var toMeta = mainEntityMeta.Attributes.Single(m => m.LogicalName == to);
+                    return string.Format("{0} ({1})",
+                        am.DisplayName.UserLocalizedLabel.Label,
+                        toMeta.DisplayName.UserLocalizedLabel.Label);
+                })
+                .ToArray();
         }
 
         private object GetValue(string key)
@@ -297,11 +323,11 @@ namespace XrmLib.Data.FetchXmlClient
             return value;
         }
 
-        private Task<IDictionary<string, EntityMetadata>> GetEntityMetadataAsync(string[] entityNames)
+        private Task<IEnumerable<EntityMetadata>> GetEntityMetadataAsync(string[] entityNames)
         {
-            return Task.Factory.StartNew<IDictionary<string, EntityMetadata>>(() =>
+            return Task.Factory.StartNew<IEnumerable<EntityMetadata>>(() =>
             {
-                return entityNames.AsParallel().Select(name =>
+                return entityNames.Distinct().AsParallel().Select(name =>
                 {
                     using (var service = new OrganizationService(this.connection.CrmConnection))
                     {
@@ -311,8 +337,7 @@ namespace XrmLib.Data.FetchXmlClient
                             EntityFilters = EntityFilters.Attributes
                         }).EntityMetadata;
                     }
-                })
-                .ToDictionary(m => m.LogicalName);
+                });
             });
         }
 

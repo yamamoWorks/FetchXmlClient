@@ -11,5 +11,10 @@ namespace XrmLib.Data.FetchXmlClient
         {
             return Enumerable.Concat(first, second);
         }
+
+        public static IEnumerable<T> Except<T>(this IEnumerable<T> first, params T[] second)
+        {
+            return Enumerable.Except(first, second);
+        }
     }
 }
